@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Infinite Vertical Jump</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #0b1020;
+      font-family: Arial, sans-serif;
+    }
+    .wrap {
+      position: relative;
+      width: min(94vw, 460px);
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 1px solid #24314f;
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45);
+      background: #0f172a;
+    }
+    #restartBtn {
+      position: absolute;
+      left: 50%;
+      top: 62%;
+      transform: translateX(-50%);
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      background: #f8fafc;
+      cursor: pointer;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="420" height="700"></canvas>
+    <button id="restartBtn">다시 시작</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const restartBtn = document.getElementById("restartBtn");
+
+    const WORLD = {
+      gravity: 0.5,
+      moveSpeed: 5,
+      bouncePower: -13,
+      platformMinW: 65,
+      platformMaxW: 110,
+      platformH: 12,
+      initialPlatforms: 10
+    };
+
+    const keys = { left: false, right: false };
+    let gameOver = false;
+    let meter = 0;
+    let bestHeight = 0;
+
+    const player = {
+      x: canvas.width / 2 - 16,
+      y: canvas.height - 90,
+      w: 32,
+      h: 40,
+      vx: 0,
+      vy: 0,
+      color: "#facc15"
+    };
+
+    const platforms = [];
+
+    function rand(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    function createPlatform(y) {
+      const w = rand(WORLD.platformMinW, WORLD.platformMaxW);
+      const x = rand(0, canvas.width - w);
+      return { x, y, w, h: WORLD.platformH };
+    }
+
+    function resetGame() {
+      gameOver = false;
+      meter = 0;
+      bestHeight = 0;
+      restartBtn.style.display = "none";
+
+      player.x = canvas.width / 2 - player.w / 2;
+      player.y = canvas.height - 100;
+      player.vx = 0;
+      player.vy = -10;
+
+      platforms.length = 0;
+      platforms.push({
+        x: canvas.width / 2 - 45,
+        y: canvas.height - 36,
+        w: 90,
+        h: WORLD.platformH
+      });
+
+      for (let i = 1; i < WORLD.initialPlatforms; i += 1) {
+        const y = canvas.height - 36 - i * rand(62, 82);
+        platforms.push(createPlatform(y));
+      }
+    }
+
+    function updatePlayer() {
+      if (keys.left) player.vx = -WORLD.moveSpeed;
+      else if (keys.right) player.vx = WORLD.moveSpeed;
+      else player.vx = 0;
+
+      player.x += player.vx;
+      player.vy += WORLD.gravity;
+      player.y += player.vy;
+
+      if (player.x + player.w < 0) player.x = canvas.width;
+      if (player.x > canvas.width) player.x = -player.w;
+    }
+
+    function handlePlatformCollision(prevY) {
+      if (player.vy <= 0) return;
+      for (const p of platforms) {
+        const nowBottom = player.y + player.h;
+        const prevBottom = prevY + player.h;
+        const overlapX = player.x + player.w > p.x && player.x < p.x + p.w;
+        const crossedTop = prevBottom <= p.y && nowBottom >= p.y;
+
+        if (overlapX && crossedTop) {
+          player.y = p.y - player.h;
+          player.vy = WORLD.bouncePower;
+          return;
+        }
+      }
+    }
+
+    function handleCamera() {
+      const threshold = canvas.height / 2;
+      if (player.y < threshold) {
+        const shift = threshold - player.y;
+        player.y = threshold;
+        for (const p of platforms) p.y += shift;
+        meter += shift;
+        bestHeight = Math.max(bestHeight, meter);
+      }
+    }
+
+    function recyclePlatforms() {
+      for (let i = platforms.length - 1; i >= 0; i -= 1) {
+        if (platforms[i].y > canvas.height + 20) platforms.splice(i, 1);
+      }
+      while (platforms.length < WORLD.initialPlatforms) {
+        let topY = canvas.height;
+        for (const p of platforms) topY = Math.min(topY, p.y);
+        const newY = topY - rand(58, 92);
+        platforms.push(createPlatform(newY));
+      }
+    }
+
+    function update() {
+      if (gameOver) return;
+
+      const prevY = player.y;
+      updatePlayer();
+      handlePlatformCollision(prevY);
+      handleCamera();
+      recyclePlatforms();
+
+      if (player.y > canvas.height) {
+        gameOver = true;
+        restartBtn.style.display = "block";
+      }
+    }
+
+    function drawBackground() {
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawPlatforms() {
+      ctx.fillStyle = "#7dd3fc";
+      for (const p of platforms) {
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+      }
+    }
+
+    function drawPlayer() {
+      ctx.fillStyle = player.color;
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+    }
+
+    function drawHud() {
+      const meterText = `${String(Math.floor(bestHeight / 10)).padStart(3, "0")}m`;
+      ctx.fillStyle = "#e2e8f0";
+      ctx.font = "bold 28px Arial";
+      ctx.textAlign = "right";
+      ctx.fillText(meterText, canvas.width - 16, 38);
+
+      ctx.font = "14px Arial";
+      ctx.textAlign = "left";
+      ctx.fillText("← → 이동 | 발판 밟으면 자동 점프", 12, 24);
+    }
+
+    function drawGameOver() {
+      if (!gameOver) return;
+      ctx.fillStyle = "rgba(2, 6, 23, 0.7)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#f8fafc";
+      ctx.textAlign = "center";
+      ctx.font = "bold 44px Arial";
+      ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 56);
+      ctx.font = "20px Arial";
+      ctx.fillText("버튼을 눌러 다시 시작", canvas.width / 2, canvas.height / 2 - 20);
+    }
+
+    function render() {
+      drawBackground();
+      drawPlatforms();
+      drawPlayer();
+      drawHud();
+      drawGameOver();
+    }
+
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft") keys.left = true;
+      if (e.key === "ArrowRight") keys.right = true;
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.key === "ArrowLeft") keys.left = false;
+      if (e.key === "ArrowRight") keys.right = false;
+    });
+
+    restartBtn.addEventListener("click", resetGame);
+
+    resetGame();
+    loop();
+  </script>
+</body>
+</html>
